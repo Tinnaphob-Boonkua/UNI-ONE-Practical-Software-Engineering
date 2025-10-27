@@ -1,31 +1,28 @@
-// main.dart
 import 'package:flutter/material.dart';
 
 void main() {
   runApp(DeansTodoApp());
 }
 
-/// Main app widget
 class DeansTodoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: "Dean's To-Do List",
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.indigo,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        useMaterial3: true,
       ),
       home: TodoHomePage(),
     );
   }
 }
 
-/// Enum for time ranges
 enum TimeRange { daily, weekly, monthly }
 
-/// Simple Task model
 class Task {
-  String id; // simple id (for example purposes)
+  String id;
   String title;
   String description;
   TimeRange range;
@@ -42,23 +39,16 @@ class Task {
   }) : createdAt = createdAt ?? DateTime.now();
 }
 
-/// Home / main screen
 class TodoHomePage extends StatefulWidget {
   @override
   _TodoHomePageState createState() => _TodoHomePageState();
 }
 
 class _TodoHomePageState extends State<TodoHomePage> {
-  // Local in-memory list of tasks
   List<Task> tasks = [];
-
-  // Current filter (null means show all)
   TimeRange? filterRange;
-
-  // Whether to sort tasks: incomplete first
   bool sortIncompleteFirst = true;
 
-  // Controllers used in dialogs (re-used)
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
   TimeRange _dialogSelectedRange = TimeRange.daily;
@@ -70,7 +60,6 @@ class _TodoHomePageState extends State<TodoHomePage> {
     super.dispose();
   }
 
-  // Helper: color theme for a range
   Color colorForRange(TimeRange r) {
     switch (r) {
       case TimeRange.daily:
@@ -93,13 +82,22 @@ class _TodoHomePageState extends State<TodoHomePage> {
     }
   }
 
-  // Generate a simple id
-  String _nextId() {
-    return DateTime.now().microsecondsSinceEpoch.toString();
+  String _nextId() => DateTime.now().microsecondsSinceEpoch.toString();
+
+  /// 🧩 Responsive Dialog Wrapper
+  Widget _responsiveDialog({required Widget child}) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dialogWidth = screenWidth < 400 ? screenWidth * 0.9 : 400.0;
+    return Center(
+      child: Container(
+        width: dialogWidth,
+        child: SingleChildScrollView(child: child),
+      ),
+    );
   }
 
-  // Add task (opens dialog)
-  void _openAddTaskDialog() {
+  /// ➕ Add New Task Dialog
+  void _showAddTaskDialog() {
     _titleController.clear();
     _descController.clear();
     _dialogSelectedRange = TimeRange.daily;
@@ -107,28 +105,28 @@ class _TodoHomePageState extends State<TodoHomePage> {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text('Add Task'),
-          content: SingleChildScrollView(
-            child: Column(
+        return _responsiveDialog(
+          child: AlertDialog(
+            title: const Text('Add New Task'),
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: _titleController,
-                  decoration: InputDecoration(labelText: 'Title'),
+                  decoration: const InputDecoration(labelText: 'Title'),
                   autofocus: true,
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _descController,
-                  decoration: InputDecoration(labelText: 'Description'),
+                  decoration: const InputDecoration(labelText: 'Description'),
                   maxLines: 3,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Row(
                   children: [
-                    Text('Time range: '),
-                    SizedBox(width: 8),
+                    const Text('Time range: '),
+                    const SizedBox(width: 8),
                     DropdownButton<TimeRange>(
                       value: _dialogSelectedRange,
                       items: TimeRange.values
@@ -138,55 +136,82 @@ class _TodoHomePageState extends State<TodoHomePage> {
                               ))
                           .toList(),
                       onChanged: (val) {
-                        if (val == null) return;
-                        setState(() {
-                          _dialogSelectedRange = val;
-                        });
-                        // Force rebuild of dialog's state
-                        (context as Element).markNeedsBuild();
+                        if (val != null) setState(() => _dialogSelectedRange = val);
                       },
                     ),
                   ],
                 ),
               ],
             ),
+            actions: [
+              TextButton(
+                child: const Text('Cancel'),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              ElevatedButton(
+                child: const Text('Add'),
+                onPressed: () {
+                  final title = _titleController.text.trim();
+                  final desc = _descController.text.trim();
+                  if (title.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter a title.')),
+                    );
+                    return;
+                  }
+                  setState(() {
+                    tasks.add(Task(
+                      id: _nextId(),
+                      title: title,
+                      description: desc,
+                      range: _dialogSelectedRange,
+                    ));
+                  });
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              child: Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            ElevatedButton(
-              child: Text('Add'),
-              onPressed: () {
-                final title = _titleController.text.trim();
-                final desc = _descController.text.trim();
-                if (title.isEmpty) {
-                  // simple validation
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Please enter a title.')),
-                  );
-                  return;
-                }
-                setState(() {
-                  tasks.add(Task(
-                    id: _nextId(),
-                    title: title,
-                    description: desc,
-                    range: _dialogSelectedRange,
-                    done: false,
-                  ));
-                });
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
         );
       },
     );
   }
 
-  // Edit existing task (dialog) - also offers delete
+  /// ❗ Delete confirmation dialog
+  Future<void> _confirmDelete(Task task) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete Task?'),
+          content: Text(
+            'Are you sure you want to delete the task:\n\n"${task.title}"?',
+            style: const TextStyle(fontSize: 15),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(false),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Yes, Delete'),
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      setState(() => tasks.removeWhere((t) => t.id == task.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task "${task.title}" deleted.')),
+      );
+    }
+  }
+
+  /// ✏️ Edit Existing Task Dialog
   void _openEditTaskDialog(Task task) {
     _titleController.text = task.title;
     _descController.text = task.description;
@@ -195,28 +220,28 @@ class _TodoHomePageState extends State<TodoHomePage> {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text('Edit Task'),
-          content: SingleChildScrollView(
-            child: Column(
+        return _responsiveDialog(
+          child: AlertDialog(
+            title: const Text('Edit Task'),
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: _titleController,
-                  decoration: InputDecoration(labelText: 'Title'),
+                  decoration: const InputDecoration(labelText: 'Title'),
                   autofocus: true,
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _descController,
-                  decoration: InputDecoration(labelText: 'Description'),
+                  decoration: const InputDecoration(labelText: 'Description'),
                   maxLines: 3,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Row(
                   children: [
-                    Text('Time range: '),
-                    SizedBox(width: 8),
+                    const Text('Time range: '),
+                    const SizedBox(width: 8),
                     DropdownButton<TimeRange>(
                       value: _dialogSelectedRange,
                       items: TimeRange.values
@@ -226,125 +251,68 @@ class _TodoHomePageState extends State<TodoHomePage> {
                               ))
                           .toList(),
                       onChanged: (val) {
-                        if (val == null) return;
-                        setState(() {
-                          _dialogSelectedRange = val;
-                        });
-                        (context as Element).markNeedsBuild();
+                        if (val != null) setState(() => _dialogSelectedRange = val);
                       },
                     ),
-                  ],
-                ),
-                SizedBox(height: 8),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: task.done,
-                      onChanged: (v) {
-                        setState(() {
-                          task.done = v ?? false;
-                        });
-                        // update dialog UI
-                        (context as Element).markNeedsBuild();
-                      },
-                    ),
-                    Text('Done'),
                   ],
                 ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              child: Text(
-                'Delete',
-                style: TextStyle(color: Colors.red),
+            actions: [
+              TextButton(
+                child: const Text('Cancel'),
+                onPressed: () => Navigator.of(context).pop(),
               ),
-              onPressed: () {
-                // Confirm delete
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text('Delete Task?'),
-                    content: Text('Are you sure you want to delete this task?'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text('Cancel')),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor:  Colors.red),
-                        onPressed: () {
-                          setState(() {
-                            tasks.removeWhere((t) => t.id == task.id);
-                          });
-                          Navigator.of(context).pop(); // close confirm
-                          Navigator.of(context).pop(); // close edit dialog
-                        },
-                        child: Text('Delete'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            TextButton(
-              child: Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            ElevatedButton(
-              child: Text('Save'),
-              onPressed: () {
-                final title = _titleController.text.trim();
-                final desc = _descController.text.trim();
-                if (title.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Please enter a title.')),
-                  );
-                  return;
-                }
-                setState(() {
-                  task.title = title;
-                  task.description = desc;
-                  task.range = _dialogSelectedRange;
-                });
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
+              TextButton(
+                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                onPressed: () async {
+                  Navigator.of(context).pop(); // close edit dialog
+                  await _confirmDelete(task); // show delete confirmation
+                },
+              ),
+              ElevatedButton(
+                child: const Text('Save'),
+                onPressed: () {
+                  final title = _titleController.text.trim();
+                  final desc = _descController.text.trim();
+                  if (title.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter a title.')),
+                    );
+                    return;
+                  }
+                  setState(() {
+                    task.title = title;
+                    task.description = desc;
+                    task.range = _dialogSelectedRange;
+                  });
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
-  // Toggle done status
-  void _toggleDone(Task task, bool? value) {
-    setState(() {
-      task.done = value ?? false;
-    });
-  }
-
-  // Filtered & sorted list presented to UI
+  /// 🧾 Filtered Task List
   List<Task> get _visibleTasks {
     List<Task> filtered = (filterRange == null)
         ? List.from(tasks)
         : tasks.where((t) => t.range == filterRange).toList();
 
-    // Optional sorting: incomplete first (or inverse)
     filtered.sort((a, b) {
-      if (sortIncompleteFirst) {
-        // incomplete (done=false) should come before done=true
-        if (a.done == b.done) return b.createdAt.compareTo(a.createdAt);
-        return a.done ? 1 : -1;
-      } else {
-        if (a.done == b.done) return b.createdAt.compareTo(a.createdAt);
-        return a.done ? -1 : 1;
+      if (a.done == b.done) {
+        return b.createdAt.compareTo(a.createdAt);
       }
+      return sortIncompleteFirst
+          ? (a.done ? 1 : -1)
+          : (a.done ? -1 : 1);
     });
-
     return filtered;
   }
 
-  // Progress counter string
   String get _progressText {
     final list = filterRange == null ? tasks : tasks.where((t) => t.range == filterRange).toList();
     if (list.isEmpty) return 'No tasks';
@@ -352,124 +320,90 @@ class _TodoHomePageState extends State<TodoHomePage> {
     return '$doneCount of ${list.length} tasks done';
   }
 
-  // Build filter chips row
   Widget _buildFilterRow() {
-    return Wrap(
-      spacing: 8,
-      children: [
-        ChoiceChip(
-          label: Text('All'),
-          selected: filterRange == null,
-          onSelected: (_) => setState(() => filterRange = null),
-        ),
-        ChoiceChip(
-          label: Text('Daily'),
-          selected: filterRange == TimeRange.daily,
-          onSelected: (_) => setState(() => filterRange = TimeRange.daily),
-          avatar: CircleAvatar(backgroundColor: colorForRange(TimeRange.daily), radius: 8),
-        ),
-        ChoiceChip(
-          label: Text('Weekly'),
-          selected: filterRange == TimeRange.weekly,
-          onSelected: (_) => setState(() => filterRange = TimeRange.weekly),
-          avatar: CircleAvatar(backgroundColor: colorForRange(TimeRange.weekly), radius: 8),
-        ),
-        ChoiceChip(
-          label: Text('Monthly'),
-          selected: filterRange == TimeRange.monthly,
-          onSelected: (_) => setState(() => filterRange = TimeRange.monthly),
-          avatar: CircleAvatar(backgroundColor: colorForRange(TimeRange.monthly), radius: 8),
-        ),
-        SizedBox(width: 10),
-        // Sorting toggle
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Sort: '),
-            IconButton(
-              tooltip: sortIncompleteFirst ? 'Incomplete first' : 'Completed first',
-              onPressed: () => setState(() => sortIncompleteFirst = !sortIncompleteFirst),
-              icon: Icon(sortIncompleteFirst ? Icons.filter_list : Icons.filter_list_off),
-            )
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        children: [
+          ChoiceChip(
+            label: const Text('All'),
+            selected: filterRange == null,
+            onSelected: (_) => setState(() => filterRange = null),
+          ),
+          const SizedBox(width: 6),
+          for (var range in TimeRange.values) ...[
+            ChoiceChip(
+              label: Text(labelForRange(range), style: const TextStyle(fontSize: 12)),
+              selected: filterRange == range,
+              onSelected: (_) => setState(() => filterRange = range),
+              avatar: CircleAvatar(
+                backgroundColor: colorForRange(range),
+                radius: 6,
+              ),
+            ),
+            const SizedBox(width: 6),
           ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildTaskTile(Task task) {
     return Card(
-      color: colorForRange(task.range)?.withOpacity(0.20),
-      margin: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      color: colorForRange(task.range).withOpacity(0.18),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         onTap: () => _openEditTaskDialog(task),
         leading: Checkbox(
           value: task.done,
-          onChanged: (v) => _toggleDone(task, v),
+          onChanged: (v) => setState(() => task.done = v ?? false),
         ),
         title: Text(
           task.title,
           style: TextStyle(
-            decoration: task.done ? TextDecoration.lineThrough : TextDecoration.none,
+            fontSize: 15,
+            decoration: task.done ? TextDecoration.lineThrough : null,
             fontWeight: FontWeight.w600,
           ),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (task.description.isNotEmpty) Text(task.description),
-            SizedBox(height: 4),
+            if (task.description.isNotEmpty)
+              Text(
+                task.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13),
+              ),
+            const SizedBox(height: 4),
             Row(
               children: [
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
-                    color: colorForRange(task.range)?.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(12),
+                    color: colorForRange(task.range).withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
                     labelForRange(task.range),
-                    style: TextStyle(fontSize: 12),
+                    style: const TextStyle(fontSize: 11),
                   ),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Text(
                   'Created: ${task.createdAt.year}-${task.createdAt.month.toString().padLeft(2, '0')}-${task.createdAt.day.toString().padLeft(2, '0')}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                 ),
               ],
             ),
           ],
         ),
-        trailing: Icon(Icons.edit),
+        trailing: const Icon(Icons.chevron_right, size: 18),
       ),
     );
-  }
-
-  // Simple sample data (optional)
-  void _addSampleTasks() {
-    setState(() {
-      tasks.addAll([
-        Task(
-            id: _nextId(),
-            title: 'Approve weekly meeting agenda',
-            description: 'Review items and attach documents',
-            range: TimeRange.weekly,
-            done: false),
-        Task(
-            id: _nextId(),
-            title: 'Sign monthly budget report',
-            description: 'Check expenses before signing',
-            range: TimeRange.monthly,
-            done: false),
-        Task(
-            id: _nextId(),
-            title: 'Daily email review',
-            description: 'Respond to high-priority emails',
-            range: TimeRange.daily,
-            done: true),
-      ]);
-    });
   }
 
   @override
@@ -477,56 +411,65 @@ class _TodoHomePageState extends State<TodoHomePage> {
     final visible = _visibleTasks;
     return Scaffold(
       appBar: AppBar(
-        title: Text("Dean's To-Do List"),
+        title: const Text(
+          "Dean's To-Do List",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(48),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(child: Text(_progressText, style: TextStyle(color: Colors.white70))),
-                IconButton(
-                  tooltip: 'Add sample tasks',
-                  icon: Icon(Icons.auto_fix_high_outlined),
-                  onPressed: _addSampleTasks,
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildFilterRow(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _progressText,
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                 ),
-              ],
+              ),
             ),
-          ),
+            Expanded(
+              child: visible.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No tasks. Tap + to add one.',
+                        style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 80, top: 8),
+                      itemCount: visible.length,
+                      itemBuilder: (context, idx) => _buildTaskTile(visible[idx]),
+                    ),
+            ),
+          ],
         ),
       ),
-      body: Column(
-        children: [
-          SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0),
-            child: _buildFilterRow(),
-          ),
-          SizedBox(height: 8),
-          Expanded(
-            child: visible.isEmpty
-                ? Center(
-                    child: Text(
-                      'No tasks. Tap + to add one.',
-                      style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: EdgeInsets.only(bottom: 16, top: 8),
-                    itemCount: visible.length,
-                    itemBuilder: (context, idx) {
-                      final task = visible[idx];
-                      return _buildTaskTile(task);
-                    },
-                  ),
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _openAddTaskDialog,
-        child: Icon(Icons.add),
-        tooltip: 'Add Task',
+        onPressed: _showAddTaskDialog,
+        child: const Icon(Icons.add),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: BottomAppBar(
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 6,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _progressText,
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                ),
+              ),
+              Icon(Icons.menu, size: 20, color: Colors.grey.shade700),
+            ],
+          ),
+        ),
       ),
     );
   }
