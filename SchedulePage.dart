@@ -57,7 +57,8 @@ class DayEvent {
 /* ---------------- Schedule Page ---------------- */
 
 class SchedulePage extends StatefulWidget {
-  const SchedulePage({super.key});
+  final DateTime? initialDay; 
+  const SchedulePage({super.key, this.initialDay});  // add initial day for getting current day format
   @override
   State<SchedulePage> createState() => _SchedulePageState();
 }
@@ -71,13 +72,20 @@ class _SchedulePageState extends State<SchedulePage> {
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _visibleMonth = DateTime(now.year, now.month, 1);
-    _selectedDay = _dateOnly(now);
-    _loadFromFirestore();
-  }
+  @override
+void initState() {
+  super.initState();
+  final now = DateTime.now();
+  final startDay = widget.initialDay != null
+      ? DateTime(widget.initialDay!.year, widget.initialDay!.month, widget.initialDay!.day)
+      : DateTime(now.year, now.month, now.day);
+
+  _visibleMonth = DateTime(startDay.year, startDay.month, 1);
+  _selectedDay  = startDay;
+
+  _loadFromFirestore();
+}
+
 
   Future<void> _loadFromFirestore() async {
     try {
